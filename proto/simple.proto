@@ -1,0 +1,329 @@
+/**
+ * Copyright (C) Ghost Robotics - All Rights Reserved
+ * Unauthorized copying of this file, via any medium is strictly prohibited
+ * Proprietary and confidential
+ * Written by Avik De <avik@ghostrobotics.io>
+ */
+syntax = "proto3";
+
+// For max_count on repeated fields, max_size on strings
+import "nanopb.proto";
+
+
+// 3-element vector inspired by geometry_msgs/Vector3
+message Vector3 {
+  float x                       = 1;//x component
+  float y                       = 2;//y component
+  float z                       = 3;//z component
+}
+// inspired by geometry_msgs/Quaternion
+message Quaternion {
+  float x                       = 1;//x component
+  float y                       = 2;//y component
+  float z                       = 3;//z component
+  float w                       = 4;//w component
+}
+// inspired by geometry_msgs/Twist
+message Twist {
+  Vector3 linear                = 1;//linear velocity components
+  Vector3 angular               = 2;//angular velocity components
+}
+// // inspired by geometry_msgs/Wrench
+// message Wrench {
+//   Vector3 force                 = 1;//force
+//   Vector3 torque                = 2;
+// }
+// inspired by geometry_msgs/Pose
+// NOTE we also use this for end effector coordinates for a limb
+message Pose {
+  Vector3 position              = 1;//linear position components (xyz)
+  Quaternion orientation        = 2;//orientation component of pose
+}
+// Subset of ROS `sensor_msgs/Imu`.
+message Imu {
+  // To be supported in a future SDK release.
+  Quaternion orientation        = 1;
+  Vector3 angular_velocity      = 2; // Angular velocity in the body frame.
+  Vector3 linear_acceleration   = 3; // Linear acceleration of the body in the body frame.
+  // Roll, pitch, yaw in that order.
+  Vector3 euler                 = 4;
+  // Covariance
+  repeated float orientation_covariance = 5 [(nanopb).max_count = 9]; // 3x3 P matrix.
+  // Accelerometer covariance scalar (multiplied by Identity of size 3).
+  float linear_acceleration_covariance = 6;
+  // Gyro covariance scalar (multiplied by Identity of size 3).
+  float angular_velocity_covariance = 7;
+}
+// Inspired by but different from ROS `sensor_msgs/JointState`
+// 
+// NOTE: this doesn't have arrays, array in RobotState; e.g. `joint[0].position`.
+message JointState {
+  float position                = 1;//rad
+  float velocity                = 2;//rad/s
+  float voltage                 = 3;//Volts
+  float current                 = 4;//Amps
+  float temperature             = 5;//C
+  float torqueEst               = 6;//N-m
+}
+// Subset of ROS `sensor_msgs/BatteryState`
+message BatteryState {
+  float voltage                 = 1;//Volts
+  float current                 = 2;//Amps
+  float percentage              = 3;//between 0-1
+  float cell_voltage            = 4 [(nanopb).max_count = 12];// (optional) individual cell voltages
+}
+// Inspired by ROS `sensor_msgs/Joy`.
+//
+// Represents joystick input.
+// 
+// Used by RC controllers, gamepad controllers, and the Android control app as well.
+// 
+// Depending on if the MCU/computer is doing the gait control, it will convert Joy to BehaviorCmd.
+// 
+message Joy {
+  // Array of axes. Nominally axes 0 to 3 correspond to channels 1 to 4 in an RC remote: 
+  // 0=right stick horizontal, 
+  // 1=right stick vertical, 
+  // 2=left stick vertical
+  // 3=left stick horizontal.
+  repeated float axes           = 1 [(nanopb).max_count = 4];
+  // Array of buttons. Nominally, 
+  // button 0 is for BehaviorCmd::id selecion;
+  // button 1 is for 0=stop,1=start, 2+ is behavior-dependent (maps to BehaviorCmd::mode).
+  repeated int32 buttons        = 2 [(nanopb).max_count = 10];
+}
+// Type of Joystick connected to the MCU
+enum JoyType {
+  PWM_QUANUM      = 0;// Quanum joystick connected with RC PWM signals 
+  SERIAL_APP      = 1;// Serial connection to XBee connected to RemoteApp
+  PWM_FRSKY_X7    = 2;// FrSKY X7 connected with RC PWM signals
+  NONE            = 3;// No joystick (user provides BehaviorCmd)
+  FRSKY_XSR       = 4;// FrSKY (R-)XSR receiver using s.bus and s.port (nominally with Q X7 transmitter)
+}
+
+// Custom messages for GR ==================================================
+
+// Target platform for which code is being compiled
+enum PlatformType{
+  MCU       = 0;//On-board MCU
+  OBC       = 1;//On-board computer
+}
+// Motor type (for use when we need actual motor parameters)
+enum MotorType
+{
+  U8_DD = 0;
+  U10P_G7 = 1;
+  U8II_G25 = 2;
+  DXL_MX106 = 3;
+  DCX32_GPX = 4;
+  U8II_G30 = 5;
+  U8Lite_150 = 6;
+  U8Lite_150_G20 = 7;
+  U8Lite_150_G25 = 8;
+  U8Lite_150_G30 = 9;
+}
+// Params attached to a motor (not needed for core SDK functions, but needed for model-based work)
+message MotorModelParams
+{
+  float kE                = 1;//Back-EMF constant
+  float kT                = 2;//Torque constant
+  float kR                = 3;//Phase-phase resistance
+  float kJv               = 4;//Joint viscous damping coefficient
+  // If there is flux saturation, need a piecewise linear approx of current-torque relation
+  // the _count parameter must be equal for them
+  repeated float currents = 5 [ (nanopb).max_count = 10 ];
+  repeated float torques  = 6 [ (nanopb).max_count = 10 ];
+}
+// Numerical parameters needed only for model-based work
+message RobotModelParams {
+  // TODO
+}
+// Joint parameters. The user can modify these after calling init(), in order to:
+// * change the driver type;
+// * change the physical address;
+// * change the gear ratio, direction, zero (confiugration of the motor in the robot);
+// * change the motor parameters (for torque esimates).
+message JointParams {
+  // Actuator type enumeration (related more to the interfacing electronics)
+  enum Type {
+    GRBL      = 0;//PWM motor controller
+    GRBLE     = 1;//EtherCAT motor controller
+    RIGID     = 2;//Rigid joint (oxymoron, but useful)
+    DXL_PWM   = 3;//Dynamixel with open-loop control (cannot mix with DXL_POS for now)
+    DXL_POS   = 4;//Dynamixel with only position control (cannot mix with DXL_PWM for now)
+  }
+  // Actuator types
+  Type type                     = 1;
+  // underlying *physical* address (e.g. PWM port, ethercat ID). TODO mapping from logical
+  uint32 address                = 2;
+  // if no output encoder on the actuator
+  float gearRatio               = 3;
+  int32 direction               = 4;
+  // Zero offset configured in software (to be deprecated)
+  float zero                    = 5;
+  // // Motor params configured in software (moved to MotorModelParamsm referenced through MotorType)
+  // float Kt                      = 6;
+  // float R                       = 7;
+  // Motor type
+  MotorType motorType           = 8;
+}
+// Limb parameters. The user can modify limb parameters after calling init(), such as changing the limb kinematics:
+// * select a specific kinematics function by changing `type`;
+// * change the kinematic parameters; or 
+// * replace the forward kinematics function itself
+// The kinematics *can be changed on the fly* (i.e. in Behavior and Peripheral updates).
+//
+// The user can also change which joints constitute this limb (this should not be changed after begin() in main())
+message LimbParams {
+  // Enum for prespecified limb types
+  enum Type {
+    SYMM5BAR_EXT_RAD = 0;// Minitaur symmetric 5-bar with extension in radians (sum of motor angles)
+    SYMM5BAR_EXT_M   = 1;// Minitaur symemtric 5-bar with extension in meters
+    PARA5BAR_EXT_RAD = 2;// 3DOF Parallel 5-bar with extension in radians (mean/diff coordinates)
+    PARA5BAR_EXT_M   = 3;// 3DOF Parallel 5-bar with extension in meters
+    PARA5BAR_CART    = 4;// 3DOF Parallel 5-bar with cartesian coordinates
+    SERIAL_RR_POLAR  = 5;// 3DOF Serial RR for sagittal plane and abduction
+  }
+  // Prespecified limb type
+  Type type                     = 1;
+  // the interpretation of the kinematic params depends on the limb type
+  repeated float kinParams      = 2 [(nanopb).max_count = 12];
+  // For custom kinematics functions (no need to supply if type matches above). If this is non-zero, then "type" is ignored and this function (of FKFunType) is used for forward kinematics
+  uint64 fkFun                  = 3;
+  // Assign joints to limbs
+  repeated uint32 jointInd      = 4 [(nanopb).max_count = 6];
+  // Vector from COM to limb base (in body frame; should be a constant vector)
+  Vector3 d                     = 5; 
+}
+// Joint command modes. NOTE not all of these may be available for all drivers
+enum JointMode {
+  OFF       = 0;//Disabled
+  PWM       = 1;//PWM duty cycle (param in in [-1, 1])
+  POSITION  = 2;//Stiff position control (param is position in radians)
+  TORQUE    = 4;//Torque specification mode (param is in N-m)
+  CURRENT   = 5;//Current mode (param is in A)
+}
+// Command message for a joint. We recommend the user use the Joint class, accessed through the global ::joint array instead of directly modifying these.
+message JointCmd {
+  // Only 'OFF', 'PWM', and 'POSITION' may be allowed initially. Safety heuristic safetyShutoffEnable may override
+  JointMode mode                = 1;
+  // PWM value, or position in rad
+  float setpoint                = 2;
+  // Proportional constant (in units of PWM duty / position unit)
+  float Kp                      = 3;
+  // Derivative constant (in units of PWM duty / velocity unit)
+  float Kd                      = 4;
+}
+// Inspired by (but different from) sensor_msgs/MultiDOFJointState
+// For an N-DOF manipulator, these can be the end-effector coordinates, or some other kinematic mapping
+// message MultiDOFJointState {
+//   repeated float position       = 1 [(nanopb).max_count = 6];
+//   repeated float velocity       = 2 [(nanopb).max_count = 6];
+//   repeated float force          = 3 [(nanopb).max_count = 6];
+// }
+// // This lets users do position or open-loop control, as before
+// message MultiDOFJointCmd {
+//   repeated JointCmd coord       = 1 [(nanopb).max_count = 6];
+// }
+
+// Command modes for a robot
+// message JointCmdArray {
+//   repeated JointCmd arr         = 1 [(nanopb).max_count = 30];
+// }
+// message MultiDOFJointCmdArray {
+//   // E.g. can do l[0].mode[EXTENSION] = PWM_DUTY, C->limb[0].setpoint[EXTENSION] etc.
+//   repeated MultiDOFJointCmd arr = 1 [(nanopb).max_count = 6];
+// }
+
+// For the robot to advertize available behaviors
+message BehaviorInfo {
+  // FIXME string encoding is failing so the behavior name is contained here.
+  repeated int32 namei             = 2 [(nanopb).max_count = 5];
+  // string name                    = 1 [(nanopb).max_size = 20];
+}
+// To command a behavior (e.g. bound, walk)
+message BehaviorCmd {
+  // Select a different behavior (indexing AvailableBehaviors)
+  uint32 id                     = 1;
+  // Set desired velocity
+  Twist twist                   = 2;
+  // Set desired position (e.g. walk height, body orientation for looking)
+  Pose pose                     = 3;
+  // convention: mode ::BehaviorMode_STOP always means stop, mode ::BehaviorMode_RUN always means normal run, 
+  // behaviors can add others. e.g. 2 may mean leap
+  // this replaces "signals" from before
+  // e.g. AvailableBehaviors returns ([0, 1], ['bound', 'walk'])
+  // user sets id=0 to select bound (check RobotState.behaviorId to confirm)
+  // user sets mode=1 to begin bounding (check RobotState.behaviorMode to confirm)
+  uint32 mode                   = 4;
+}
+
+// Configuration struct available to the MCU or OBC (not for transmission); global pointer ::P.
+// The user can change these parameters after calling init():
+// * change `P->joints_count` to add a joint, up to 30;
+// * for each joint, the JointParams can be modified (see JointParams help for details);
+// * change the number of limbs in `P->limbs_count` up to ::MAX_LIMB_COUNT;
+// * for each limb, change the LimbParams (see LimbParams help for details).
+// @ingroup Messaging
+message RobotParams {
+  // Robot types
+  enum Type {
+    MINITAUR    = 0;// Minitaur original
+    MINITAUR_E  = 1;// New test minitaur
+    NGR         = 2;// New robot prototype
+  }
+  // Robot types (defines morphology, limb kinematics, initializes default joint / limb configuration)
+  Type type                     = 1;
+  repeated JointParams joints   = 2 [(nanopb).max_count = 30];//Joint parameter array
+  repeated LimbParams  limbs    = 3 [(nanopb).max_count = 6];//Limb parameter array
+}
+
+// Robot state sent from the robot to the user code; global pointer ::S.
+// Some settable robot state is echoed back (cmdMode, behaviorMode, ...). Instead of a full request/reply RPC implementation, the computer/tablet app can check if this changed.
+// @ingroup Messaging
+message RobotState {
+  repeated JointState joints    = 1 [(nanopb).max_count = 30];//JointState readings
+  Imu imu                       = 2;//IMU sensor readings
+  BatteryState batt             = 3;//Battery sensor readings
+  Joy joy                       = 4;//Readings from Joystick on the mainboard (RC, Serial, XBee, ...)
+  // State estimate from proprioception/IMU
+  Twist twist                   = 5;
+  // Robot echoes back its command mode (matches the payload tag in RobotCommand)
+  uint32 cmdMode                = 6;
+  // Robot says what behaviors are available on the MCU
+  repeated BehaviorInfo behaviors = 7 [(nanopb).max_count = 10];
+  // Robot echoes back what behavior is selected
+  uint32 behaviorId             = 8;
+  // Robot echoes back its behavior mode (running, stopped, leaping, etc.)
+  uint32 behaviorMode           = 9;
+  // Current time in milliseconds
+  uint32 millis                 = 11;
+
+  // A 'limb' is any manipulator (leg, etc.)
+  // can do (e.g.) S->limb[0].position[EXTENSION]
+  // repeated MultiDOFJointState limbs = 10 [(nanopb).max_count = 6];
+
+}
+// Robot command sent by the user code to the robot; global pointer ::C.
+// @ingroup Messaging
+message RobotCommand {
+  // Enum of possible command modes
+  enum Mode {
+    BEHAVIOR  = 0;// Command behavior (RobotCommand::behavior is used)
+    LIMB      = 1;// Command limbs (not used now)
+    JOINT     = 2;// Command joints (RobotCommand::joints is used)
+  }
+
+  // Command the behavior (e.g. the computer sends twist commands to behaviors pre-programmed on the MCU)
+  BehaviorCmd behavior              = 1;
+
+  // Directly command joints (low-level gait programming)
+  repeated JointCmd joints          = 3 [(nanopb).max_count = 30];
+
+  // Select which mode.
+  // oneof produces terrible syntax and also seems like you can't change on the fly...
+  // but at RUNTIME we will use one of the command modes
+  Mode mode                         = 4;
+}
+
+// @}

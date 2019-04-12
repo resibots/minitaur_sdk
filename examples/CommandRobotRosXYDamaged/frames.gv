@@ -1,0 +1,8 @@
+digraph G {
+"world" -> "minitaur"[label="Broadcaster: /vrpn_client_node\nAverage rate: 120.363 Hz\nMost recent transform: 1548406737.646 ( 0.002 sec old)\nBuffer length: 4.960 sec\n"];
+"minitaur" -> "base_link"[label="Broadcaster: /minitaur_base_link\nAverage rate: 10.183 Hz\nMost recent transform: 1548406737.726 ( -0.078 sec old)\nBuffer length: 4.910 sec\n"];
+edge [style=invis];
+ subgraph cluster_legend { style=bold; color=black; label ="view_frames Result";
+"Recorded at time: 1548406737.648"[ shape=plaintext ] ;
+ }->"world";
+}

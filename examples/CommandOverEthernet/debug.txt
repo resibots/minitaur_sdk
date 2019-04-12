@@ -1,0 +1,9 @@
+enxe4b97a92cc38 Link encap:Ethernet  HWaddr e4:b9:7a:92:cc:38  
+          inet adr:169.254.98.1  Bcast:169.254.98.255  Masque:255.255.255.0
+          adr inet6: fe80::e6b9:7aff:fe92:cc38/64 Scope:Lien
+          UP BROADCAST RUNNING MULTICAST  MTU:1500  Metric:1
+          Packets reçus:1160771 erreurs:0 :0 overruns:0 frame:0
+          TX packets:108827 errors:0 dropped:0 overruns:0 carrier:0
+          collisions:0 lg file transmission:1000 
+          Octets reçus:580385500 (580.3 MB) Octets transmis:12188349 (12.1 MB)
+
